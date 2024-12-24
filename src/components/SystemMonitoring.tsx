@@ -36,8 +36,17 @@ interface SystemStatus {
   detail?: string;
 }
 
-const API_BASE_URL = 'http://localhost:8000';
-const WS_BASE_URL = 'ws://localhost:8000';
+const SERVICES = {
+  ui: 'http://localhost:8000',
+  config: 'http://localhost:8001',
+  state: 'http://localhost:8002',
+  communication: 'http://localhost:8003',
+  process: 'http://localhost:8004',
+  dataCollection: 'http://localhost:8005',
+  validation: 'http://localhost:8006'
+};
+
+const WS_BASE_URL = SERVICES.communication;
 
 export default function SystemMonitoring() {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -46,30 +55,45 @@ export default function SystemMonitoring() {
   const [wsConnected, setWsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch system status
+  // Fetch system status from all services
   const fetchSystemStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch system status');
-      }
-      
-      setSystemStatus(data);
+      const serviceStatuses = await Promise.all(
+        Object.entries(SERVICES).map(async ([name, url]) => {
+          try {
+            const response = await fetch(`${url}/health`);
+            const data = await response.json();
+            return { name, ...data };
+          } catch (err) {
+            return { 
+              name, 
+              status: 'error', 
+              error: err instanceof Error ? err.message : 'Connection failed',
+              is_running: false 
+            };
+          }
+        })
+      );
+
+      const allServices = serviceStatuses.reduce((acc, service) => {
+        acc[service.name] = service;
+        return acc;
+      }, {} as Record<string, any>);
+
+      setSystemStatus(allServices);
       setError(null);
     } catch (err) {
       console.error('System status error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to connect to server');
+      setError(err instanceof Error ? err.message : 'Failed to connect to services');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Fetch tag values
+  // Fetch tag values from communication service
   const fetchTags = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/communication/tags`);
+      const response = await fetch(`${SERVICES.communication}/communication/tags`);
       const data = await response.json();
       
       if (!response.ok) {
@@ -186,26 +210,31 @@ export default function SystemMonitoring() {
       )}
 
       <Grid container spacing={3}>
-        {/* System Status Card */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                System Status
-              </Typography>
-              {systemStatus ? (
-                <>
-                  <Typography>Status: {systemStatus.status}</Typography>
-                  <Typography>Version: {systemStatus.version}</Typography>
-                  <Typography>Uptime: {Math.floor(systemStatus.uptime / 3600)}h {Math.floor((systemStatus.uptime % 3600) / 60)}m</Typography>
-                  <Typography>Memory Usage: {systemStatus.memory_usage.used_percent}%</Typography>
-                </>
-              ) : (
-                <Typography color="error">Unable to fetch system status</Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* System Status Cards */}
+        {systemStatus && Object.entries(systemStatus).map(([serviceName, status]) => (
+          <Grid item xs={12} md={6} key={serviceName}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  {serviceName.charAt(0).toUpperCase() + serviceName.slice(1)} Service
+                </Typography>
+                <Typography>Status: {status.status}</Typography>
+                {status.version && <Typography>Version: {status.version}</Typography>}
+                {status.uptime && (
+                  <Typography>
+                    Uptime: {Math.floor(status.uptime / 3600)}h {Math.floor((status.uptime % 3600) / 60)}m
+                  </Typography>
+                )}
+                {status.memory_usage?.used_percent && (
+                  <Typography>Memory Usage: {status.memory_usage.used_percent}%</Typography>
+                )}
+                {status.error && (
+                  <Typography color="error">Error: {status.error}</Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
 
         {/* Real-time Tags Table */}
         <Grid item xs={12}>
