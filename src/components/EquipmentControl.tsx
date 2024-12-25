@@ -1,159 +1,107 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import {
   Box,
+  Typography,
   Card,
   CardContent,
   Grid,
-  Typography,
-  TextField,
-  Button,
   Switch,
   FormControlLabel,
-  Divider,
   Slider,
-  Alert,
-  Paper
+  Alert
 } from '@mui/material';
-
-interface EquipmentState {
-  gas: {
-    main_flow: number;
-    feeder_flow: number;
-    main_pressure: number;
-    feeder_pressure: number;
-    nozzle_pressure: number;
-    regulator_pressure: number;
-  };
-  vacuum: {
-    chamber_pressure: number;
-    mech_pump_running: boolean;
-    booster_pump_running: boolean;
-    vent_valve_open: boolean;
-    gate_valve_open: boolean;
-  };
-  feeders: Array<{
-    id: number;
-    frequency: number;
-    running: boolean;
-  }>;
-  deagglomerators: Array<{
-    id: number;
-    duty_cycle: number;
-    frequency: number;
-  }>;
-  shutter: {
-    engaged: boolean;
-  };
-}
+import { useWebSocket } from '../context/WebSocketContext';
 
 const COMM_SERVICE = 'http://localhost:8003';
 
 export default function EquipmentControl() {
-  const [equipmentState, setEquipmentState] = useState<EquipmentState | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { state, connected, error } = useWebSocket();
 
-  // Fetch current equipment state
-  const fetchEquipmentState = useCallback(async () => {
+  const controlGas = async (type: 'main' | 'feeder', action: 'valve' | 'flow', value: boolean | number) => {
+    if (!connected) return;
     try {
-      const response = await fetch(`${COMM_SERVICE}/equipment/state`);
-      if (!response.ok) throw new Error('Failed to fetch equipment state');
-      const data = await response.json();
-      setEquipmentState(data);
-      setError(null);
-    } catch (err) {
-      console.error('Equipment state error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch equipment state');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Control functions
-  const controlGasFlow = async (type: 'main' | 'feeder', value: number) => {
-    try {
-      const response = await fetch(`${COMM_SERVICE}/equipment/gas/${type}/flow`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flow_rate: value })
-      });
-      if (!response.ok) throw new Error(`Failed to set ${type} flow`);
-      fetchEquipmentState(); // Refresh state
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to control gas flow');
-    }
-  };
-
-  const controlFeeder = async (id: number, action: 'start' | 'stop' | 'frequency', value?: number) => {
-    try {
-      let url = `${COMM_SERVICE}/equipment/feeder/${id}/`;
-      let body = {};
-      
-      if (action === 'frequency') {
-        url += 'frequency';
-        body = { frequency: value };
+      if (action === 'flow') {
+        await fetch(`${COMM_SERVICE}/equipment/gas/${type}_flow`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value })
+        });
       } else {
-        url += action;
+        await fetch(`${COMM_SERVICE}/equipment/gas/${type}_valve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ open: value })
+        });
       }
+    } catch (err) {
+      console.error(`Failed to control ${type} gas ${action}:`, err);
+    }
+  };
 
-      const response = await fetch(url, {
+  const controlVacuum = async (component: 'gate' | 'mech' | 'booster', action: boolean) => {
+    if (!connected) return;
+    try {
+      const endpoint = component === 'gate' ? 'gate_valve' : component === 'mech' ? 'mechanical_pump' : 'booster_pump';
+      await fetch(`${COMM_SERVICE}/equipment/vacuum/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ on: action })
       });
-      
-      if (!response.ok) throw new Error(`Failed to control feeder ${id}`);
-      fetchEquipmentState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to control feeder');
+      console.error(`Failed to control ${component}:`, err);
     }
   };
 
-  const controlDeagglomerator = async (id: number, speed: number) => {
+  const controlFeeder = async (id: 1 | 2, action: 'start' | 'stop' | 'frequency', value?: number) => {
+    if (!connected) return;
     try {
-      const response = await fetch(`${COMM_SERVICE}/equipment/deagg/${id}/speed`, {
+      if (action === 'frequency') {
+        await fetch(`${COMM_SERVICE}/equipment/feeder${id}/frequency`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value })
+        });
+      } else {
+        await fetch(`${COMM_SERVICE}/equipment/feeder${id}/${action === 'start' ? 'on' : 'off'}`, {
+          method: 'POST'
+        });
+      }
+    } catch (err) {
+      console.error(`Failed to control feeder ${id}:`, err);
+    }
+  };
+
+  const controlNozzle = async (action: 'shutter', value: boolean) => {
+    if (!connected) return;
+    try {
+      await fetch(`${COMM_SERVICE}/equipment/nozzle/shutter`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ speed })
+        body: JSON.stringify({ open: value })
       });
-      if (!response.ok) throw new Error(`Failed to control deagglomerator ${id}`);
-      fetchEquipmentState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to control deagglomerator');
+      console.error('Failed to control nozzle:', err);
     }
   };
-
-  const controlVacuum = async (component: 'vent' | 'mech' | 'booster' | 'gate', action: 'open' | 'close' | 'start' | 'stop') => {
-    try {
-      const response = await fetch(`${COMM_SERVICE}/equipment/vacuum/${component}/${action}`, {
-        method: 'POST'
-      });
-      if (!response.ok) throw new Error(`Failed to control vacuum ${component}`);
-      fetchEquipmentState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to control vacuum');
-    }
-  };
-
-  // Initialize and set up polling
-  useEffect(() => {
-    fetchEquipmentState();
-    const interval = setInterval(fetchEquipmentState, 1000); // Poll every second
-    return () => clearInterval(interval);
-  }, [fetchEquipmentState]);
-
-  if (loading) {
-    return <Typography>Loading equipment state...</Typography>;
-  }
-
-  if (!equipmentState) {
-    return <Alert severity="error">Failed to load equipment state</Alert>;
-  }
 
   return (
-    <Box>
-      <Typography variant="h5" gutterBottom>Equipment Control & Monitoring</Typography>
-      
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="h5">
+          Equipment Control
+        </Typography>
+        <Typography 
+          component="span" 
+          sx={{ 
+            color: connected ? 'success.main' : 'error.main',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+        >
+          ● {connected ? 'Connected' : 'Disconnected'}
+        </Typography>
+      </Box>
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -166,39 +114,50 @@ export default function EquipmentControl() {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>Gas Control</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Typography>Main Flow: {equipmentState.gas.main_flow} SLPM</Typography>
-                  <Slider
-                    value={equipmentState.gas.main_flow}
-                    onChange={(_, value) => controlGasFlow('main', value as number)}
-                    min={0}
-                    max={100}
-                    step={1}
-                    marks
-                    valueLabelDisplay="auto"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography>Feeder Flow: {equipmentState.gas.feeder_flow} SLPM</Typography>
-                  <Slider
-                    value={equipmentState.gas.feeder_flow}
-                    onChange={(_, value) => controlGasFlow('feeder', value as number)}
-                    min={0}
-                    max={50}
-                    step={1}
-                    marks
-                    valueLabelDisplay="auto"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography>Pressures:</Typography>
-                  <Typography variant="body2">Main: {equipmentState.gas.main_pressure} PSI</Typography>
-                  <Typography variant="body2">Feeder: {equipmentState.gas.feeder_pressure} PSI</Typography>
-                  <Typography variant="body2">Nozzle: {equipmentState.gas.nozzle_pressure} PSI</Typography>
-                  <Typography variant="body2">Regulator: {equipmentState.gas.regulator_pressure} PSI</Typography>
-                </Grid>
-              </Grid>
+              
+              <Box mt={2}>
+                <Typography>Main Gas</Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={state.gas.main_valve}
+                      onChange={(_, checked) => controlGas('main', 'valve', checked)}
+                      disabled={!connected}
+                    />
+                  }
+                  label="Main Valve"
+                />
+                <Typography>Flow: {state.gas.main_flow} SLPM</Typography>
+                <Slider
+                  value={state.gas.main_flow}
+                  onChange={(_, value) => controlGas('main', 'flow', value as number)}
+                  min={0}
+                  max={100}
+                  disabled={!connected || !state.gas.main_valve}
+                />
+              </Box>
+
+              <Box mt={2}>
+                <Typography>Feeder Gas</Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={state.gas.feeder_valve}
+                      onChange={(_, checked) => controlGas('feeder', 'valve', checked)}
+                      disabled={!connected}
+                    />
+                  }
+                  label="Feeder Valve"
+                />
+                <Typography>Flow: {state.gas.feeder_flow} SLPM</Typography>
+                <Slider
+                  value={state.gas.feeder_flow}
+                  onChange={(_, value) => controlGas('feeder', 'flow', value as number)}
+                  min={0}
+                  max={50}
+                  disabled={!connected || !state.gas.feeder_valve}
+                />
+              </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -208,16 +167,16 @@ export default function EquipmentControl() {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>Vacuum Control</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Typography>Chamber Pressure: {equipmentState.vacuum.chamber_pressure} Torr</Typography>
-                </Grid>
+              <Typography>Chamber Pressure: {state.vacuum.chamber_pressure.toFixed(2)} Torr</Typography>
+              
+              <Grid container spacing={2} mt={1}>
                 <Grid item xs={6}>
                   <FormControlLabel
                     control={
                       <Switch
-                        checked={equipmentState.vacuum.mech_pump_running}
-                        onChange={() => controlVacuum('mech', equipmentState.vacuum.mech_pump_running ? 'stop' : 'start')}
+                        checked={state.vacuum.mech_pump}
+                        onChange={(_, checked) => controlVacuum('mech', checked)}
+                        disabled={!connected}
                       />
                     }
                     label="Mechanical Pump"
@@ -227,8 +186,9 @@ export default function EquipmentControl() {
                   <FormControlLabel
                     control={
                       <Switch
-                        checked={equipmentState.vacuum.booster_pump_running}
-                        onChange={() => controlVacuum('booster', equipmentState.vacuum.booster_pump_running ? 'stop' : 'start')}
+                        checked={state.vacuum.booster_pump}
+                        onChange={(_, checked) => controlVacuum('booster', checked)}
+                        disabled={!connected}
                       />
                     }
                     label="Booster Pump"
@@ -238,19 +198,9 @@ export default function EquipmentControl() {
                   <FormControlLabel
                     control={
                       <Switch
-                        checked={equipmentState.vacuum.vent_valve_open}
-                        onChange={() => controlVacuum('vent', equipmentState.vacuum.vent_valve_open ? 'close' : 'open')}
-                      />
-                    }
-                    label="Vent Valve"
-                  />
-                </Grid>
-                <Grid item xs={6}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={equipmentState.vacuum.gate_valve_open}
-                        onChange={() => controlVacuum('gate', equipmentState.vacuum.gate_valve_open ? 'close' : 'open')}
+                        checked={state.vacuum.gate_valve}
+                        onChange={(_, checked) => controlVacuum('gate', checked)}
+                        disabled={!connected}
                       />
                     }
                     label="Gate Valve"
@@ -266,60 +216,33 @@ export default function EquipmentControl() {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>Feeders Control</Typography>
-              {equipmentState.feeders.map((feeder) => (
-                <Box key={feeder.id} sx={{ mb: 2 }}>
-                  <Typography>Feeder {feeder.id}</Typography>
+              
+              {[state.feeder1, state.feeder2].map((feeder, index) => (
+                <Box key={index} mt={index > 0 ? 2 : 0}>
+                  <Typography>Feeder {index + 1}</Typography>
                   <Grid container spacing={2} alignItems="center">
                     <Grid item xs={8}>
                       <Typography>Frequency: {feeder.frequency} Hz</Typography>
                       <Slider
                         value={feeder.frequency}
-                        onChange={(_, value) => controlFeeder(feeder.id, 'frequency', value as number)}
+                        onChange={(_, value) => controlFeeder((index + 1) as 1 | 2, 'frequency', value as number)}
                         min={0}
                         max={1000}
-                        step={10}
-                        valueLabelDisplay="auto"
+                        disabled={!connected}
                       />
                     </Grid>
                     <Grid item xs={4}>
-                      <Button
-                        variant="contained"
-                        color={feeder.running ? "error" : "success"}
-                        onClick={() => controlFeeder(feeder.id, feeder.running ? 'stop' : 'start')}
-                      >
-                        {feeder.running ? 'Stop' : 'Start'}
-                      </Button>
-                    </Grid>
-                  </Grid>
-                </Box>
-              ))}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Deagglomerators Control */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>Deagglomerators Control</Typography>
-              {equipmentState.deagglomerators.map((deagg) => (
-                <Box key={deagg.id} sx={{ mb: 2 }}>
-                  <Typography>Deagglomerator {deagg.id}</Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12}>
-                      <Typography>Duty Cycle: {deagg.duty_cycle}%</Typography>
-                      <Slider
-                        value={deagg.duty_cycle}
-                        onChange={(_, value) => controlDeagglomerator(deagg.id, value as number)}
-                        min={0}
-                        max={100}
-                        step={5}
-                        valueLabelDisplay="auto"
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={feeder.running}
+                            onChange={(_, checked) => controlFeeder((index + 1) as 1 | 2, checked ? 'start' : 'stop')}
+                            disabled={!connected}
+                          />
+                        }
+                        label={feeder.running ? 'Running' : 'Stopped'}
                       />
                     </Grid>
-                    <Grid item xs={12}>
-                      <Typography>Frequency: {deagg.frequency} Hz</Typography>
-                    </Grid>
                   </Grid>
                 </Box>
               ))}
@@ -327,19 +250,22 @@ export default function EquipmentControl() {
           </Card>
         </Grid>
 
-        {/* Shutter Control */}
+        {/* Nozzle Control */}
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>Shutter Control</Typography>
+              <Typography variant="h6" gutterBottom>Nozzle Control</Typography>
+              <Typography>Active Nozzle: {state.nozzle.active_nozzle}</Typography>
+              <Typography>Pressure: {state.nozzle.pressure.toFixed(1)} PSI</Typography>
               <FormControlLabel
                 control={
                   <Switch
-                    checked={equipmentState.shutter.engaged}
-                    onChange={() => {/* Add shutter control */}}
+                    checked={state.nozzle.shutter_open}
+                    onChange={(_, checked) => controlNozzle('shutter', checked)}
+                    disabled={!connected}
                   />
                 }
-                label="Shutter Engaged"
+                label="Shutter"
               />
             </CardContent>
           </Card>

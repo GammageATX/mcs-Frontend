@@ -1,4 +1,4 @@
-import React, { useState, ReactNode } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   AppBar, 
   Toolbar, 
@@ -19,9 +19,10 @@ import FileManagement from './FileManagement';
 import ProcessConfiguration from './ProcessConfiguration';
 import SystemMonitoring from './SystemMonitoring';
 import EquipmentControl from './EquipmentControl';
+import { WebSocketProvider } from '../context/WebSocketContext';
 
 interface MaterialUILayoutProps {
-  children?: ReactNode;
+  children?: React.ReactNode;
 }
 
 const drawerWidth = 240;
@@ -65,7 +66,11 @@ export default function MaterialUILayout({ children }: MaterialUILayoutProps) {
   const renderSection = () => {
     switch (selectedSection) {
       case 'Equipment Control':
-        return <EquipmentControl />;
+        return (
+          <WebSocketProvider>
+            <EquipmentControl />
+          </WebSocketProvider>
+        );
       case 'File Management':
         return <FileManagement />;
       case 'Process Configuration':
