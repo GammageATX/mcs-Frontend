@@ -256,7 +256,7 @@ export default function EquipmentControl() {
             <CardContent>
               <Typography variant="h6" gutterBottom>Nozzle Control</Typography>
               <Typography>Active Nozzle: {state.nozzle.active_nozzle}</Typography>
-              <Typography>Pressure: {state.nozzle.pressure.toFixed(1)} PSI</Typography>
+              <Typography>Pressure: {state.nozzle.pressure.toFixed(1)} torr</Typography>
               <FormControlLabel
                 control={
                   <Switch
