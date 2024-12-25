@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, ReactNode } from 'react';
 import { 
   AppBar, 
   Toolbar, 
@@ -18,6 +18,11 @@ import {
 import FileManagement from './FileManagement';
 import ProcessConfiguration from './ProcessConfiguration';
 import SystemMonitoring from './SystemMonitoring';
+import EquipmentControl from './EquipmentControl';
+
+interface MaterialUILayoutProps {
+  children?: ReactNode;
+}
 
 const drawerWidth = 240;
 
@@ -46,10 +51,11 @@ const MonitorIcon = (props: SvgIconProps) => (
   </SvgIcon>
 );
 
-export default function MaterialUILayout() {
-  const [selectedSection, setSelectedSection] = useState('File Management');
+export default function MaterialUILayout({ children }: MaterialUILayoutProps) {
+  const [selectedSection, setSelectedSection] = useState('Equipment Control');
 
   const sections = [
+    { name: 'Equipment Control', icon: MonitorIcon, description: 'Monitor and control system hardware' },
     { name: 'File Management', icon: FileIcon, description: 'Manage nozzle, powder, pattern, and sequence files' },
     { name: 'Process Configuration', icon: ConfigIcon, description: 'Configure hardware and process parameters' },
     { name: 'Process Execution', icon: ExecuteIcon, description: 'Execute and control spray sequences' },
@@ -58,6 +64,8 @@ export default function MaterialUILayout() {
 
   const renderSection = () => {
     switch (selectedSection) {
+      case 'Equipment Control':
+        return <EquipmentControl />;
       case 'File Management':
         return <FileManagement />;
       case 'Process Configuration':
