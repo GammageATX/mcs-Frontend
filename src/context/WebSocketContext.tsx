@@ -3,33 +3,45 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 interface GasState {
   main_flow: number;
   feeder_flow: number;
+  main_pressure: number;
+  feeder_pressure: number;
+  nozzle_pressure: number;
+  regulator_pressure: number;
   main_valve: boolean;
   feeder_valve: boolean;
 }
 
 interface VacuumState {
   chamber_pressure: number;
-  gate_valve: boolean;
-  mech_pump: boolean;
-  booster_pump: boolean;
+  mech_pump_running: boolean;
+  booster_pump_running: boolean;
+  vent_valve_open: boolean;
+  gate_valve_position: 'open' | 'closed' | 'partial';
 }
 
 interface FeederState {
-  running: boolean;
+  id: number;
   frequency: number;
+  running: boolean;
+}
+
+interface DeagglomeratorState {
+  id: number;
+  duty_cycle: number;
+  frequency: number;
+  speed: number;
 }
 
 interface NozzleState {
-  active_nozzle: 1 | 2;  // Literal type for 1 or 2
-  shutter_open: boolean;
-  pressure: number;
+  active_id: 1 | 2;
+  shutter_engaged: boolean;
 }
 
 interface EquipmentState {
   gas: GasState;
   vacuum: VacuumState;
-  feeder1: FeederState;
-  feeder2: FeederState;
+  feeders: FeederState[];
+  deagglomerators: DeagglomeratorState[];
   nozzle: NozzleState;
 }
 
@@ -37,27 +49,31 @@ const INITIAL_STATE: EquipmentState = {
   gas: {
     main_flow: 0,
     feeder_flow: 0,
+    main_pressure: 0,
+    feeder_pressure: 0,
+    nozzle_pressure: 0,
+    regulator_pressure: 0,
     main_valve: false,
     feeder_valve: false
   },
   vacuum: {
     chamber_pressure: 0,
-    gate_valve: false,
-    mech_pump: false,
-    booster_pump: false
+    mech_pump_running: false,
+    booster_pump_running: false,
+    vent_valve_open: false,
+    gate_valve_position: 'closed'
   },
-  feeder1: {
-    running: false,
-    frequency: 0
-  },
-  feeder2: {
-    running: false,
-    frequency: 0
-  },
+  feeders: [
+    { id: 1, frequency: 0, running: false },
+    { id: 2, frequency: 0, running: false }
+  ],
+  deagglomerators: [
+    { id: 1, duty_cycle: 0, frequency: 0, speed: 0 },
+    { id: 2, duty_cycle: 0, frequency: 0, speed: 0 }
+  ],
   nozzle: {
-    active_nozzle: 1,
-    shutter_open: false,
-    pressure: 0
+    active_id: 1,
+    shutter_engaged: false
   }
 };
 
