@@ -1,108 +1,262 @@
-import React, { useState } from 'react';
-import { 
-  Typography, 
-  Button, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  ListItemSecondaryAction, 
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
   IconButton,
+  Button,
+  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  Alert,
+  CircularProgress
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
+import AddIcon from '@mui/icons-material/Add';
 
-interface File {
-  id: string;
+const COMM_SERVICE = 'http://localhost:8003';
+
+interface FileData {
   name: string;
-  type: 'nozzle' | 'powder' | 'raster' | 'gas' | 'sequence';
+  content: string;
+  type: 'nozzle' | 'powder' | 'pattern' | 'sequence';
+  created_at: string;
+  modified_at: string;
 }
 
 export default function FileManagement() {
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<Record<string, FileData[]>>({
+    nozzle: [],
+    powder: [],
+    pattern: [],
+    sequence: []
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [newFileName, setNewFileName] = useState('');
-  const [newFileType, setNewFileType] = useState<File['type']>('nozzle');
+  const [selectedFile, setSelectedFile] = useState<FileData | null>(null);
+  const [selectedType, setSelectedType] = useState<string>('');
+  const [editContent, setEditContent] = useState('');
 
-  const handleAddFile = () => {
-    if (newFileName && newFileType) {
-      setFiles([...files, { id: Date.now().toString(), name: newFileName, type: newFileType }]);
-      setNewFileName('');
-      setNewFileType('nozzle');
-      setOpenDialog(false);
+  const fetchFiles = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${COMM_SERVICE}/files`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch files');
+      }
+      const data = await response.json();
+      setFiles(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching files:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch files');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDeleteFile = (id: string) => {
-    setFiles(files.filter(file => file.id !== id));
+  useEffect(() => {
+    fetchFiles();
+  }, []);
+
+  const handleCreateFile = async (type: string, content: string) => {
+    try {
+      const response = await fetch(`${COMM_SERVICE}/files/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create file');
+      }
+      
+      await fetchFiles();
+      setOpenDialog(false);
+      setSelectedFile(null);
+      setEditContent('');
+    } catch (err) {
+      console.error('Error creating file:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create file');
+    }
   };
 
+  const handleUpdateFile = async (type: string, name: string, content: string) => {
+    try {
+      const response = await fetch(`${COMM_SERVICE}/files/${type}/${name}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update file');
+      }
+      
+      await fetchFiles();
+      setOpenDialog(false);
+      setSelectedFile(null);
+      setEditContent('');
+    } catch (err) {
+      console.error('Error updating file:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update file');
+    }
+  };
+
+  const handleDeleteFile = async (type: string, name: string) => {
+    try {
+      const response = await fetch(`${COMM_SERVICE}/files/${type}/${name}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete file');
+      }
+      
+      await fetchFiles();
+    } catch (err) {
+      console.error('Error deleting file:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete file');
+    }
+  };
+
+  const handleEdit = (file: FileData, type: string) => {
+    setSelectedFile(file);
+    setSelectedType(type);
+    setEditContent(file.content);
+    setOpenDialog(true);
+  };
+
+  const handleAdd = (type: string) => {
+    setSelectedFile(null);
+    setSelectedType(type);
+    setEditContent('');
+    setOpenDialog(true);
+  };
+
+  const handleSave = () => {
+    if (selectedFile) {
+      handleUpdateFile(selectedType, selectedFile.name, editContent);
+    } else {
+      handleCreateFile(selectedType, editContent);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
-    <div>
-      <Typography variant="h4" gutterBottom>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" gutterBottom>
         File Management
       </Typography>
-      <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenDialog(true)}>
-        Add New File
-      </Button>
-      <List>
-        {files.map((file) => (
-          <ListItem key={file.id}>
-            <ListItemText primary={file.name} secondary={`Type: ${file.type}`} />
-            <ListItemSecondaryAction>
-              <IconButton edge="end" aria-label="edit">
-                <EditIcon />
-              </IconButton>
-              <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteFile(file.id)}>
-                <DeleteIcon />
-              </IconButton>
-            </ListItemSecondaryAction>
-          </ListItem>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Grid container spacing={3}>
+        {Object.entries(files).map(([type, fileList]) => (
+          <Grid item xs={12} md={6} key={type}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">
+                    {type.charAt(0).toUpperCase() + type.slice(1)} Files
+                  </Typography>
+                  <Button
+                    startIcon={<AddIcon />}
+                    onClick={() => handleAdd(type)}
+                    variant="contained"
+                    size="small"
+                  >
+                    Add
+                  </Button>
+                </Box>
+                
+                <List>
+                  {fileList.map((file) => (
+                    <ListItem key={file.name}>
+                      <ListItemText
+                        primary={file.name}
+                        secondary={`Modified: ${new Date(file.modified_at).toLocaleString()}`}
+                      />
+                      <ListItemSecondaryAction>
+                        <IconButton 
+                          edge="end" 
+                          aria-label="edit"
+                          onClick={() => handleEdit(file, type)}
+                          sx={{ mr: 1 }}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton 
+                          edge="end" 
+                          aria-label="delete"
+                          onClick={() => handleDeleteFile(type, file.name)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                  {fileList.length === 0 && (
+                    <ListItem>
+                      <ListItemText primary="No files" />
+                    </ListItem>
+                  )}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
         ))}
-      </List>
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-        <DialogTitle>Add New File</DialogTitle>
+      </Grid>
+
+      <Dialog 
+        open={openDialog} 
+        onClose={() => setOpenDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedFile ? `Edit ${selectedFile.name}` : `New ${selectedType} File`}
+        </DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
-            margin="dense"
-            id="name"
-            label="File Name"
-            type="text"
+            multiline
+            rows={10}
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
             fullWidth
-            variant="standard"
-            value={newFileName}
-            onChange={(e) => setNewFileName(e.target.value)}
+            variant="outlined"
+            margin="normal"
           />
-          <TextField
-            select
-            margin="dense"
-            id="type"
-            label="File Type"
-            fullWidth
-            variant="standard"
-            value={newFileType}
-            onChange={(e) => setNewFileType(e.target.value as File['type'])}
-            SelectProps={{
-              native: true,
-            }}
-          >
-            <option value="nozzle">Nozzle</option>
-            <option value="powder">Powder</option>
-            <option value="raster">Raster</option>
-            <option value="gas">Gas</option>
-            <option value="sequence">Sequence</option>
-          </TextField>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button onClick={handleAddFile}>Add</Button>
+          <Button onClick={handleSave} variant="contained" color="primary">
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
-    </div>
+    </Box>
   );
-}
-
+} 

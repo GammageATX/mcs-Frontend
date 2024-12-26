@@ -300,6 +300,15 @@ export default function EquipmentControl() {
             <CardContent>
               <Typography variant="h6" gutterBottom>Gas Control</Typography>
               
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Main Supply: {equipment.pressures.main_supply.toFixed(1)} PSI
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Regulator: {equipment.pressures.regulator.toFixed(1)} PSI
+                </Typography>
+              </Box>
+              
               <Box mt={2}>
                 <Typography>Main Gas</Typography>
                 <FormControlLabel
@@ -371,7 +380,14 @@ export default function EquipmentControl() {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>Vacuum Control</Typography>
-              <Typography>Chamber Pressure: {equipment.pressures.chamber.toFixed(2)} Torr</Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Chamber Pressure: {equipment.pressures.chamber.toFixed(2)} Torr
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Feeder Pressure: {equipment.pressures.feeder.toFixed(2)} Torr
+                </Typography>
+              </Box>
               
               <Grid container spacing={2} mt={1}>
                 <Grid item xs={6}>
@@ -431,6 +447,12 @@ export default function EquipmentControl() {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>Nozzle Control</Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Nozzle Pressure: {equipment.pressures.nozzle.toFixed(1)} Torr
+                </Typography>
+              </Box>
+              
               <Grid container spacing={2}>
                 <Grid item xs={12}>
                   <Typography>Active Nozzle: {equipment.nozzle.active_nozzle}</Typography>
@@ -444,9 +466,6 @@ export default function EquipmentControl() {
                     }
                     label="Use Nozzle 2"
                   />
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography>Pressure: {equipment.pressures.nozzle.toFixed(1)} Torr</Typography>
                 </Grid>
                 <Grid item xs={12}>
                   <FormControlLabel

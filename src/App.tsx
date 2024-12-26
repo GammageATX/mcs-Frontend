@@ -1,37 +1,38 @@
 import React from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { AppBar, Toolbar, Typography, Container } from '@mui/material';
-import EquipmentControl from './components/EquipmentControl';
-import { WebSocketProvider } from './context/WebSocketContext';
+import MaterialUILayout from './components/MaterialUILayout';
 
 const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
       main: '#1976d2',
-    }
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+    background: {
+      default: '#f5f5f5',
+      paper: '#ffffff',
+    },
+  },
+  components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#1976d2',
+        },
+      },
+    },
   },
 });
 
 export default function App() {
-  console.log('App rendering');
-  
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <WebSocketProvider>
-        <AppBar position="fixed">
-          <Toolbar>
-            <Typography variant="h6">
-              Micro Cold Spray System
-            </Typography>
-          </Toolbar>
-        </AppBar>
-        <Container sx={{ mt: 10 }}>
-          <EquipmentControl />
-        </Container>
-      </WebSocketProvider>
+      <MaterialUILayout />
     </ThemeProvider>
   );
 } 
