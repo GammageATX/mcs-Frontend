@@ -1,16 +1,17 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
+// State interfaces
 interface GasState {
-  main_flow: number;
-  main_flow_measured: number;
-  feeder_flow: number;
-  feeder_flow_measured: number;
+  main_flow: number;           // Setpoint (0-100 SLPM)
+  main_flow_measured: number;  // Actual measured value (SLPM)
+  feeder_flow: number;         // Setpoint (0-10 SLPM)
+  feeder_flow_measured: number;// Actual measured value (SLPM)
   main_valve: boolean;
   feeder_valve: boolean;
 }
 
 interface VacuumState {
-  chamber_pressure: number;
+  chamber_pressure: number;    // torr
   gate_valve: boolean;
   mech_pump: boolean;
   booster_pump: boolean;
@@ -19,12 +20,11 @@ interface VacuumState {
 
 interface FeederState {
   running: boolean;
-  frequency: number;
+  frequency: number;          // Hz (200-1200, steps of 200)
 }
 
 interface DeagglomeratorState {
-  duty_cycle: number;
-  frequency: number;
+  duty_cycle: number;         // % (20-35, higher = lower speed)
 }
 
 interface NozzleState {
@@ -33,49 +33,32 @@ interface NozzleState {
 }
 
 interface PressureState {
-  chamber: number;
-  feeder: number;
-  main_supply: number;
-  nozzle: number;
-  regulator: number;
+  chamber: number;            // torr
+  feeder: number;            // torr
+  main_supply: number;       // torr
+  nozzle: number;           // torr
+  regulator: number;        // torr
 }
 
 interface AxisState {
-  position: number;
-  in_position: boolean;
-  moving: boolean;
-  error: boolean;
-  homed: boolean;
+  position: number;          // mm
+  in_position: boolean;      // At target
+  moving: boolean;          // Currently moving
+  error: boolean;           // Error state
+  homed: boolean;           // Has been homed
 }
 
 interface MotionState {
   position: {
-    x: number;
-    y: number;
-    z: number;
+    x: number;              // mm
+    y: number;              // mm
+    z: number;              // mm
   };
   status: {
     x_axis: AxisState;
     y_axis: AxisState;
     z_axis: AxisState;
-    module_ready: boolean;
-  };
-  parameters: {
-    velocity: {
-      x: number;
-      y: number;
-      z: number;
-    };
-    acceleration: {
-      x: number;
-      y: number;
-      z: number;
-    };
-    deceleration: {
-      x: number;
-      y: number;
-      z: number;
-    };
+    module_ready: boolean;  // Motion controller ready
   };
 }
 
@@ -112,6 +95,7 @@ interface SystemState {
   safety: SafetyState;
 }
 
+// Initial state with proper defaults
 const INITIAL_STATE: SystemState = {
   equipment: {
     gas: {
@@ -131,19 +115,17 @@ const INITIAL_STATE: SystemState = {
     },
     feeder1: {
       running: false,
-      frequency: 0
+      frequency: 200  // Default to minimum frequency
     },
     feeder2: {
       running: false,
-      frequency: 0
+      frequency: 200  // Default to minimum frequency
     },
     deagg1: {
-      duty_cycle: 0,
-      frequency: 500
+      duty_cycle: 35  // Default to Off (highest duty cycle)
     },
     deagg2: {
-      duty_cycle: 0,
-      frequency: 500
+      duty_cycle: 35  // Default to Off (highest duty cycle)
     },
     nozzle: {
       active_nozzle: 1,
@@ -186,23 +168,6 @@ const INITIAL_STATE: SystemState = {
         homed: false
       },
       module_ready: false
-    },
-    parameters: {
-      velocity: {
-        x: 0,
-        y: 0,
-        z: 0
-      },
-      acceleration: {
-        x: 0,
-        y: 0,
-        z: 0
-      },
-      deceleration: {
-        x: 0,
-        y: 0,
-        z: 0
-      }
     }
   },
   safety: {
@@ -236,7 +201,7 @@ const WebSocketContext = createContext<WebSocketContextType>({
   error: null
 });
 
-function WebSocketProvider({ children }: { children: React.ReactNode }) {
+export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<SystemState>(INITIAL_STATE);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,10 +213,7 @@ function WebSocketProvider({ children }: { children: React.ReactNode }) {
     console.log('WebSocketProvider mounted');
 
     const connect = () => {
-      if (!mountedRef.current) {
-        console.log('Not connecting - component unmounted');
-        return;
-      }
+      if (!mountedRef.current) return;
       
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         console.log('WebSocket already connected');
@@ -270,26 +232,63 @@ function WebSocketProvider({ children }: { children: React.ReactNode }) {
         };
 
         wsRef.current.onmessage = (event: MessageEvent) => {
-          if (!mountedRef.current) {
-            console.log('Received message but component unmounted');
-            return;
-          }
+          if (!mountedRef.current) return;
           try {
-            console.log('Raw message:', event.data);
+            console.log('Raw WebSocket message:', event.data);
             const data = JSON.parse(event.data);
-            console.log('Parsed message:', data);
+            console.log('Parsed message:', JSON.stringify(data, null, 2));
             
             if (data.type === 'state_update') {
-              console.log('Updating state with:', data.data);
+              if (!data.data) {
+                console.error('Missing data field in state update');
+                return;
+              }
+
+              // Validate equipment state
+              if (!data.data.equipment) {
+                console.error('Missing equipment state:', data.data);
+                return;
+              }
+
+              const { equipment, motion, safety } = data.data;
+
+              // Validate required equipment fields
+              const requiredFields = ['gas', 'vacuum', 'feeder1', 'feeder2', 'deagg1', 'deagg2', 'nozzle', 'pressures'];
+              const missingFields = requiredFields.filter(field => !equipment[field]);
+              if (missingFields.length > 0) {
+                console.error('Missing equipment fields:', missingFields);
+                console.error('Received equipment state:', equipment);
+                return;
+              }
+
+              // Validate motion state
+              if (!motion?.position || !motion?.status) {
+                console.error('Invalid motion state:', motion);
+                return;
+              }
+
+              // Validate safety state
+              if (!safety?.hardware || !safety?.process || !safety?.safety) {
+                console.error('Invalid safety state:', safety);
+                return;
+              }
+
+              console.log('Valid state update received:', {
+                equipment: Object.keys(equipment),
+                motion: Object.keys(motion),
+                safety: Object.keys(safety)
+              });
+
               setState(prevState => ({
                 ...prevState,
                 ...data.data
               }));
-            } else {
-              console.log('Ignoring message - not a state update');
             }
           } catch (err) {
-            console.error('Failed to parse message:', err);
+            console.error('Failed to parse or validate message:', err);
+            if (err instanceof Error) {
+              setError(`State validation error: ${err.message}`);
+            }
           }
         };
 
@@ -300,27 +299,24 @@ function WebSocketProvider({ children }: { children: React.ReactNode }) {
           setError('WebSocket connection error');
         };
 
-        wsRef.current.onclose = (event: CloseEvent) => {
+        wsRef.current.onclose = () => {
           if (!mountedRef.current) return;
-          console.log('WebSocket closed:', event.code, event.reason);
+          console.log('WebSocket disconnected');
           setConnected(false);
           wsRef.current = null;
           
           if (mountedRef.current) {
-            console.log('Scheduling reconnection attempt...');
             setTimeout(connect, 3000);
           }
         };
       } catch (err) {
         if (!mountedRef.current) return;
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        console.error('Failed to create WebSocket:', errorMessage);
+        console.error('Failed to create WebSocket:', err);
         setConnected(false);
-        setError(`Failed to connect: ${errorMessage}`);
+        setError('Failed to connect to WebSocket');
         wsRef.current = null;
 
         if (mountedRef.current) {
-          console.log('Scheduling reconnection attempt after error...');
           setTimeout(connect, 3000);
         }
       }
@@ -329,10 +325,9 @@ function WebSocketProvider({ children }: { children: React.ReactNode }) {
     connect();
 
     return () => {
-      console.log('WebSocketProvider unmounting, cleaning up...');
+      console.log('WebSocketProvider unmounting');
       mountedRef.current = false;
       if (wsRef.current) {
-        console.log('Closing WebSocket connection');
         wsRef.current.close();
         wsRef.current = null;
       }
@@ -346,7 +341,7 @@ function WebSocketProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function useWebSocket() {
+export function useWebSocket() {
   const context = useContext(WebSocketContext);
   if (!context) {
     throw new Error('useWebSocket must be used within a WebSocketProvider');
@@ -354,4 +349,4 @@ function useWebSocket() {
   return context;
 }
 
-export { WebSocketProvider, useWebSocket, type SystemState };
+export type { SystemState };

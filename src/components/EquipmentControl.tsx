@@ -9,7 +9,8 @@ import {
   FormControlLabel,
   Slider,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Button
 } from '@mui/material';
 import { useWebSocket } from '../context/WebSocketContext';
 
@@ -175,6 +176,61 @@ export default function EquipmentControl() {
       }
     } catch (err) {
       console.error(`Failed to control deagglomerator ${id}:`, err);
+    }
+  };
+
+  const handleJog = async (axis: 'x' | 'y' | 'z', direction: 1 | -1) => {
+    if (!connected) return;
+    try {
+      const response = await fetch(`${COMM_SERVICE}/equipment/motion/jog`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          tag: `motion_control.jog.${axis}`,
+          value: direction
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to jog ${axis}: ${response.status}`);
+      }
+    } catch (err) {
+      console.error(`Failed to jog ${axis}:`, err);
+    }
+  };
+
+  const handleSetHome = async () => {
+    if (!connected) return;
+    try {
+      const response = await fetch(`${COMM_SERVICE}/equipment/motion/set_home`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          tag: 'motion_control.set_home'
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to set home: ${response.status}`);
+      }
+    } catch (err) {
+      console.error(`Failed to set home:`, err);
+    }
+  };
+
+  const handleGoHome = async () => {
+    if (!connected) return;
+    try {
+      const response = await fetch(`${COMM_SERVICE}/equipment/motion/go_home`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          tag: 'motion_control.go_home'
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to go home: ${response.status}`);
+      }
+    } catch (err) {
+      console.error(`Failed to go home:`, err);
     }
   };
 
@@ -488,29 +544,196 @@ export default function EquipmentControl() {
           </Card>
         </Grid>
 
-        {/* Motion Status - Full Width */}
+        {/* Motion Status and Controls - Full Width */}
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>Motion Status</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Typography color={motion.status.module_ready ? 'success.main' : 'error.main'}>
-                    Motion Controller: {motion.status.module_ready ? 'Ready' : 'Not Ready'}
-                  </Typography>
+              <Typography variant="h6" gutterBottom>Motion Control</Typography>
+              <Grid container spacing={3}>
+                {/* Motion Status - Left 2/3 */}
+                <Grid item xs={12} md={8}>
+                  <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Typography 
+                      color={motion.status.module_ready ? 'success.main' : 'error.main'} 
+                      variant="h6" 
+                      gutterBottom
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                    >
+                      <Box component="span" sx={{ 
+                        width: 12, 
+                        height: 12, 
+                        borderRadius: '50%', 
+                        backgroundColor: motion.status.module_ready ? 'success.main' : 'error.main' 
+                      }} />
+                      Motion Controller: {motion.status.module_ready ? 'Ready' : 'Not Ready'}
+                    </Typography>
+
+                    <Grid container spacing={2} mt={1}>
+                      {['x', 'y', 'z'].map((axis) => (
+                        <Grid item xs={12} md={4} key={axis}>
+                          <Box sx={{ 
+                            p: 1.5, 
+                            border: '1px solid', 
+                            borderColor: 'divider', 
+                            borderRadius: 1,
+                            bgcolor: 'background.paper'
+                          }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                              {axis.toUpperCase()} Axis
+                            </Typography>
+                            <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '1.1rem' }}>
+                                Position: {motion.position[axis as 'x' | 'y' | 'z'].toFixed(3)} mm
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: motion.status[`${axis}_axis` as 'x_axis' | 'y_axis' | 'z_axis'].moving ? 
+                                  'warning.main' : 'success.main'
+                              }}>
+                                Status: {motion.status[`${axis}_axis` as 'x_axis' | 'y_axis' | 'z_axis'].moving ? 'Moving' : 'Stopped'}
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: motion.status[`${axis}_axis` as 'x_axis' | 'y_axis' | 'z_axis'].homed ? 
+                                  'success.main' : 'warning.main'
+                              }}>
+                                Homed: {motion.status[`${axis}_axis` as 'x_axis' | 'y_axis' | 'z_axis'].homed ? 'Yes' : 'No'}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
                 </Grid>
-                {['x', 'y', 'z'].map((axis) => (
-                  <Grid item xs={12} md={4} key={axis}>
-                    <Typography variant="subtitle1">{axis.toUpperCase()} Axis</Typography>
-                    <Typography>Position: {motion.position[axis as 'x' | 'y' | 'z'].toFixed(3)} mm</Typography>
-                    <Typography>
-                      Status: {motion.status[`${axis}_axis` as 'x_axis' | 'y_axis' | 'z_axis'].moving ? 'Moving' : 'Stopped'}
-                    </Typography>
-                    <Typography>
-                      Homed: {motion.status[`${axis}_axis` as 'x_axis' | 'y_axis' | 'z_axis'].homed ? 'Yes' : 'No'}
-                    </Typography>
-                  </Grid>
-                ))}
+
+                {/* Motion Controls - Right 1/3 */}
+                <Grid item xs={12} md={4}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {/* Jog Controls */}
+                    <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                        Jog Controls
+                      </Typography>
+                      
+                      {/* Step Size Selection */}
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" gutterBottom>Step Size (mm)</Typography>
+                        <Grid container spacing={1}>
+                          {[0.1, 1, 10].map((step) => (
+                            <Grid item xs={4} key={step}>
+                              <Button
+                                variant={step === 1 ? 'contained' : 'outlined'}
+                                size="small"
+                                fullWidth
+                                sx={{ minWidth: 0 }}
+                              >
+                                {step}
+                              </Button>
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </Box>
+
+                      {/* XY Controls */}
+                      <Box sx={{ position: 'relative', width: '100%', height: 120, mb: 2 }}>
+                        {/* Y Axis */}
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => handleJog('y', 1)}
+                          disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                          sx={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)' }}
+                        >
+                          Y+
+                        </Button>
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => handleJog('y', -1)}
+                          disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                          sx={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)' }}
+                        >
+                          Y-
+                        </Button>
+                        
+                        {/* X Axis */}
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => handleJog('x', -1)}
+                          disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                          sx={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)' }}
+                        >
+                          X-
+                        </Button>
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => handleJog('x', 1)}
+                          disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                          sx={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)' }}
+                        >
+                          X+
+                        </Button>
+                      </Box>
+
+                      {/* Z Controls */}
+                      <Grid container spacing={1} justifyContent="center">
+                        <Grid item xs={6}>
+                          <Button
+                            variant="contained"
+                            fullWidth
+                            onClick={() => handleJog('z', 1)}
+                            disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                          >
+                            Z+
+                          </Button>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Button
+                            variant="contained"
+                            fullWidth
+                            onClick={() => handleJog('z', -1)}
+                            disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                          >
+                            Z-
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </Box>
+
+                    {/* Home Controls */}
+                    <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                        Home Controls
+                      </Typography>
+                      <Grid container spacing={1}>
+                        <Grid item xs={12}>
+                          <Button 
+                            variant="contained" 
+                            fullWidth
+                            color="primary"
+                            onClick={handleSetHome}
+                            disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                            sx={{ mb: 1 }}
+                          >
+                            Set Home Position
+                          </Button>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Button 
+                            variant="contained" 
+                            fullWidth
+                            color="secondary"
+                            onClick={handleGoHome}
+                            disabled={!connected || !safety.hardware.plc_connected || !motion.status.module_ready}
+                          >
+                            Go To Home
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  </Box>
+                </Grid>
               </Grid>
             </CardContent>
           </Card>
