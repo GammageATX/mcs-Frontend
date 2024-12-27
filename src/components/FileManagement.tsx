@@ -23,7 +23,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 
-const COMM_SERVICE = 'http://localhost:8003';
+const PROCESS_SERVICE = 'http://localhost:8004';
 
 interface FileData {
   name: string;
@@ -50,12 +50,38 @@ export default function FileManagement() {
   const fetchFiles = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${COMM_SERVICE}/files`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch files');
+      // Fetch sequences from process service
+      const sequencesResponse = await fetch(`${PROCESS_SERVICE}/process/sequences`);
+      if (!sequencesResponse.ok) {
+        throw new Error('Failed to fetch sequences');
       }
-      const data = await response.json();
-      setFiles(data);
+      const sequencesData = await sequencesResponse.json();
+      
+      // Fetch patterns from pattern service
+      const patternsResponse = await fetch(`${PROCESS_SERVICE}/pattern/list`);
+      if (!patternsResponse.ok) {
+        throw new Error('Failed to fetch patterns');
+      }
+      const patternsData = await patternsResponse.json();
+
+      // Update files state with the fetched data
+      setFiles({
+        ...files,
+        sequence: sequencesData.map((seq: any) => ({
+          name: seq.id,
+          content: JSON.stringify(seq, null, 2),
+          type: 'sequence',
+          created_at: new Date().toISOString(),
+          modified_at: new Date().toISOString()
+        })),
+        pattern: patternsData.map((pattern: any) => ({
+          name: pattern.id,
+          content: JSON.stringify(pattern, null, 2),
+          type: 'pattern',
+          created_at: new Date().toISOString(),
+          modified_at: new Date().toISOString()
+        }))
+      });
       setError(null);
     } catch (err) {
       console.error('Error fetching files:', err);
@@ -71,14 +97,26 @@ export default function FileManagement() {
 
   const handleCreateFile = async (type: string, content: string) => {
     try {
-      const response = await fetch(`${COMM_SERVICE}/files/${type}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      });
+      let response;
+      if (type === 'sequence') {
+        response = await fetch(`${PROCESS_SERVICE}/process/sequences`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: content
+        });
+      } else if (type === 'pattern') {
+        response = await fetch(`${PROCESS_SERVICE}/pattern/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: content
+        });
+      } else {
+        // Handle other file types if needed
+        return;
+      }
       
       if (!response.ok) {
-        throw new Error('Failed to create file');
+        throw new Error(`Failed to create ${type}`);
       }
       
       await fetchFiles();
@@ -86,21 +124,33 @@ export default function FileManagement() {
       setSelectedFile(null);
       setEditContent('');
     } catch (err) {
-      console.error('Error creating file:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create file');
+      console.error(`Error creating ${type}:`, err);
+      setError(err instanceof Error ? err.message : `Failed to create ${type}`);
     }
   };
 
   const handleUpdateFile = async (type: string, name: string, content: string) => {
     try {
-      const response = await fetch(`${COMM_SERVICE}/files/${type}/${name}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      });
+      let response;
+      if (type === 'sequence') {
+        response = await fetch(`${PROCESS_SERVICE}/process/sequences/${name}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: content
+        });
+      } else if (type === 'pattern') {
+        response = await fetch(`${PROCESS_SERVICE}/pattern/update/${name}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: content
+        });
+      } else {
+        // Handle other file types if needed
+        return;
+      }
       
       if (!response.ok) {
-        throw new Error('Failed to update file');
+        throw new Error(`Failed to update ${type}`);
       }
       
       await fetchFiles();
@@ -108,25 +158,35 @@ export default function FileManagement() {
       setSelectedFile(null);
       setEditContent('');
     } catch (err) {
-      console.error('Error updating file:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update file');
+      console.error(`Error updating ${type}:`, err);
+      setError(err instanceof Error ? err.message : `Failed to update ${type}`);
     }
   };
 
   const handleDeleteFile = async (type: string, name: string) => {
     try {
-      const response = await fetch(`${COMM_SERVICE}/files/${type}/${name}`, {
-        method: 'DELETE'
-      });
+      let response;
+      if (type === 'sequence') {
+        response = await fetch(`${PROCESS_SERVICE}/process/sequences/${name}`, {
+          method: 'DELETE'
+        });
+      } else if (type === 'pattern') {
+        response = await fetch(`${PROCESS_SERVICE}/pattern/delete/${name}`, {
+          method: 'DELETE'
+        });
+      } else {
+        // Handle other file types if needed
+        return;
+      }
       
       if (!response.ok) {
-        throw new Error('Failed to delete file');
+        throw new Error(`Failed to delete ${type}`);
       }
       
       await fetchFiles();
     } catch (err) {
-      console.error('Error deleting file:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete file');
+      console.error(`Error deleting ${type}:`, err);
+      setError(err instanceof Error ? err.message : `Failed to delete ${type}`);
     }
   };
 

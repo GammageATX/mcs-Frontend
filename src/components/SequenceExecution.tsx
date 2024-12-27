@@ -30,11 +30,14 @@ import StopIcon from '@mui/icons-material/Stop';
 import PauseIcon from '@mui/icons-material/Pause';
 import { useWebSocket } from '../context/WebSocketContext';
 
-const COMM_SERVICE = 'http://localhost:8003';
+const PROCESS_SERVICE = 'http://localhost:8004';
 
 interface SequenceFile {
+  id: string;
   name: string;
-  content: string;
+  description?: string;
+  steps: any[];
+  created_at: string;
   modified_at: string;
 }
 
@@ -58,11 +61,14 @@ export default function SequenceExecution() {
   useEffect(() => {
     const fetchSequences = async () => {
       try {
-        const response = await fetch(`${COMM_SERVICE}/files/sequence`);
+        console.log('Fetching sequences from:', `${PROCESS_SERVICE}/process/sequences`);
+        const response = await fetch(`${PROCESS_SERVICE}/process/sequences`);
+        console.log('Response status:', response.status);
         if (!response.ok) {
-          throw new Error('Failed to fetch sequence files');
+          throw new Error(`Failed to fetch sequences: ${response.status}`);
         }
         const data = await response.json();
+        console.log('Received sequences:', data);
         setSequences(data);
       } catch (err) {
         console.error('Error fetching sequences:', err);
@@ -88,10 +94,18 @@ export default function SequenceExecution() {
     if (!selectedSequence || !connected) return;
     
     try {
-      const response = await fetch(`${COMM_SERVICE}/execution/start`, {
+      // First, get the full sequence details
+      const sequenceResponse = await fetch(`${PROCESS_SERVICE}/process/sequences/${selectedSequence}`);
+      if (!sequenceResponse.ok) {
+        throw new Error('Failed to fetch sequence details');
+      }
+      const sequenceData = await sequenceResponse.json();
+      
+      // Start execution with the sequence data
+      const response = await fetch(`${PROCESS_SERVICE}/process/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sequence_name: selectedSequence })
+        body: JSON.stringify({ sequence: sequenceData })
       });
       
       if (!response.ok) {
@@ -107,7 +121,7 @@ export default function SequenceExecution() {
 
   const handlePauseExecution = async () => {
     try {
-      const response = await fetch(`${COMM_SERVICE}/execution/pause`, {
+      const response = await fetch(`${PROCESS_SERVICE}/process/pause`, {
         method: 'POST'
       });
       
@@ -122,7 +136,7 @@ export default function SequenceExecution() {
 
   const handleStopExecution = async () => {
     try {
-      const response = await fetch(`${COMM_SERVICE}/execution/stop`, {
+      const response = await fetch(`${PROCESS_SERVICE}/process/stop`, {
         method: 'POST'
       });
       
