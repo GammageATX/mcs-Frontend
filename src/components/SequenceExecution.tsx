@@ -1,288 +1,199 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Grid,
-  Button,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  LinearProgress,
-  Alert,
-  Stack,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Stepper,
-  Step,
-  StepLabel,
-  IconButton
-} from '@mui/material';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import StopIcon from '@mui/icons-material/Stop';
-import PauseIcon from '@mui/icons-material/Pause';
+import React, { useEffect, useState } from 'react';
+import { Grid, Paper, Typography, Button, Box, Chip } from '@mui/material';
 import { useWebSocket } from '../context/WebSocketContext';
 
-const PROCESS_SERVICE = 'http://localhost:8004';
-
-interface SequenceFile {
+interface SequenceStep {
   id: string;
   name: string;
-  description?: string;
-  steps: any[];
-  created_at: string;
-  modified_at: string;
+  description: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  error_message?: string;
 }
 
-interface ExecutionStep {
+interface Sequence {
+  id: string;
   name: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'error';
-  data?: any;
+  description: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  steps: SequenceStep[];
+  error_message?: string;
 }
 
 export default function SequenceExecution() {
-  const { state, connected, error: wsError } = useWebSocket();
-  const [sequences, setSequences] = useState<SequenceFile[]>([]);
-  const [selectedSequence, setSelectedSequence] = useState<string>('');
-  const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'error'>('idle');
-  const [currentStep, setCurrentStep] = useState<number>(0);
+  const { connected } = useWebSocket();
+  const [sequences, setSequences] = useState<Sequence[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
-  const [collectedData, setCollectedData] = useState<Record<string, any>>({});
 
-  // Fetch available sequence files
   useEffect(() => {
     const fetchSequences = async () => {
       try {
-        console.log('Fetching sequences from:', `${PROCESS_SERVICE}/process/sequences`);
-        const response = await fetch(`${PROCESS_SERVICE}/process/sequences`);
-        console.log('Response status:', response.status);
+        const response = await fetch('/process/sequences');
         if (!response.ok) {
           throw new Error(`Failed to fetch sequences: ${response.status}`);
         }
         const data = await response.json();
-        console.log('Received sequences:', data);
         setSequences(data);
+        setError(null);
       } catch (err) {
-        console.error('Error fetching sequences:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch sequences');
+        console.error('Failed to fetch sequences:', err);
+        setError('Failed to load sequences');
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchSequences();
   }, []);
 
-  // Handle WebSocket updates for execution status and data collection
-  useEffect(() => {
-    if (state?.execution) {
-      const { status, current_step, steps, collected_data } = state.execution;
-      setExecutionStatus(status);
-      setCurrentStep(current_step);
-      if (steps) setExecutionSteps(steps);
-      if (collected_data) setCollectedData(collected_data);
-    }
-  }, [state]);
-
-  const handleStartExecution = async () => {
-    if (!selectedSequence || !connected) return;
-    
+  const handleStartSequence = async (sequenceId: string) => {
     try {
-      // First, get the full sequence details
-      const sequenceResponse = await fetch(`${PROCESS_SERVICE}/process/sequences/${selectedSequence}`);
-      if (!sequenceResponse.ok) {
-        throw new Error('Failed to fetch sequence details');
-      }
-      const sequenceData = await sequenceResponse.json();
-      
-      // Start execution with the sequence data
-      const response = await fetch(`${PROCESS_SERVICE}/process/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sequence: sequenceData })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start sequence execution');
-      }
-      
-      setError(null);
-    } catch (err) {
-      console.error('Error starting execution:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start execution');
-    }
-  };
-
-  const handlePauseExecution = async () => {
-    try {
-      const response = await fetch(`${PROCESS_SERVICE}/process/pause`, {
+      const response = await fetch(`/process/sequences/${sequenceId}/start`, {
         method: 'POST'
       });
-      
       if (!response.ok) {
-        throw new Error('Failed to pause execution');
+        throw new Error(`Failed to start sequence: ${response.status}`);
+      }
+      // Refresh sequences after starting
+      const updatedResponse = await fetch('/process/sequences');
+      if (updatedResponse.ok) {
+        const data = await updatedResponse.json();
+        setSequences(data);
       }
     } catch (err) {
-      console.error('Error pausing execution:', err);
-      setError(err instanceof Error ? err.message : 'Failed to pause execution');
+      console.error('Failed to start sequence:', err);
+      setError('Failed to start sequence');
     }
   };
 
-  const handleStopExecution = async () => {
+  const handleStopSequence = async (sequenceId: string) => {
     try {
-      const response = await fetch(`${PROCESS_SERVICE}/process/stop`, {
+      const response = await fetch(`/process/sequences/${sequenceId}/stop`, {
         method: 'POST'
       });
-      
       if (!response.ok) {
-        throw new Error('Failed to stop execution');
+        throw new Error(`Failed to stop sequence: ${response.status}`);
+      }
+      // Refresh sequences after stopping
+      const updatedResponse = await fetch('/process/sequences');
+      if (updatedResponse.ok) {
+        const data = await updatedResponse.json();
+        setSequences(data);
       }
     } catch (err) {
-      console.error('Error stopping execution:', err);
-      setError(err instanceof Error ? err.message : 'Failed to stop execution');
+      console.error('Failed to stop sequence:', err);
+      setError('Failed to stop sequence');
     }
   };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'success';
+      case 'running':
+        return 'primary';
+      case 'error':
+        return 'error';
+      default:
+        return 'default';
+    }
+  };
+
+  if (loading) {
+    return (
+      <Typography>Loading sequences...</Typography>
+    );
+  }
+
+  if (error) {
+    return (
+      <Typography color="error">{error}</Typography>
+    );
+  }
+
+  if (!sequences || sequences.length === 0) {
+    return (
+      <Typography>No sequences available</Typography>
+    );
+  }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        Sequence Execution
-      </Typography>
-
-      {(error || wsError) && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error || wsError}
-        </Alert>
-      )}
-
-      <Grid container spacing={3}>
-        {/* Sequence Selection and Control */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <FormControl sx={{ minWidth: 200 }}>
-                  <InputLabel>Select Sequence</InputLabel>
-                  <Select
-                    value={selectedSequence}
-                    onChange={(e) => setSelectedSequence(e.target.value)}
-                    label="Select Sequence"
-                    disabled={executionStatus === 'running' || executionStatus === 'paused'}
-                  >
-                    {sequences.map((seq) => (
-                      <MenuItem key={seq.name} value={seq.name}>
-                        {seq.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <IconButton
-                  color="primary"
-                  onClick={handleStartExecution}
-                  disabled={!selectedSequence || executionStatus === 'running' || !connected}
-                >
-                  <PlayArrowIcon />
-                </IconButton>
-
-                <IconButton
-                  color="warning"
-                  onClick={handlePauseExecution}
-                  disabled={executionStatus !== 'running' || !connected}
-                >
-                  <PauseIcon />
-                </IconButton>
-
-                <IconButton
-                  color="error"
-                  onClick={handleStopExecution}
-                  disabled={executionStatus !== 'running' && executionStatus !== 'paused' || !connected}
-                >
-                  <StopIcon />
-                </IconButton>
-
-                <Typography
-                  sx={{
-                    color: executionStatus === 'running' ? 'success.main' :
-                           executionStatus === 'paused' ? 'warning.main' :
-                           executionStatus === 'error' ? 'error.main' :
-                           'text.secondary'
-                  }}
-                >
-                  Status: {executionStatus.charAt(0).toUpperCase() + executionStatus.slice(1)}
+    <Grid container spacing={2}>
+      {sequences.map((sequence) => (
+        <Grid item xs={12} key={sequence.id}>
+          <Paper sx={{ p: 2 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box>
+                <Typography variant="h6">{sequence.name}</Typography>
+                <Typography variant="body2" color="textSecondary">
+                  {sequence.description}
                 </Typography>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
+              </Box>
+              <Box display="flex" gap={1}>
+                <Chip
+                  label={sequence.status}
+                  color={getStatusColor(sequence.status)}
+                  size="small"
+                />
+                {sequence.status !== 'running' ? (
+                  <Button
+                    variant="contained"
+                    onClick={() => handleStartSequence(sequence.id)}
+                    disabled={!connected}
+                  >
+                    Start
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    color="error"
+                    onClick={() => handleStopSequence(sequence.id)}
+                  >
+                    Stop
+                  </Button>
+                )}
+              </Box>
+            </Box>
 
-        {/* Execution Progress */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Execution Progress
+            {sequence.error_message && (
+              <Typography color="error" variant="body2" mb={2}>
+                Error: {sequence.error_message}
               </Typography>
-              <Stepper activeStep={currentStep} sx={{ mb: 3 }}>
-                {executionSteps.map((step, index) => (
-                  <Step key={index}>
-                    <StepLabel error={step.status === 'error'}>
-                      {step.name}
-                    </StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-              {executionStatus === 'running' && (
-                <LinearProgress sx={{ mb: 2 }} />
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+            )}
 
-        {/* Data Collection */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Collected Data
-              </Typography>
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Parameter</TableCell>
-                      <TableCell>Value</TableCell>
-                      <TableCell>Timestamp</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {Object.entries(collectedData).map(([key, { value, timestamp }]) => (
-                      <TableRow key={key}>
-                        <TableCell>{key}</TableCell>
-                        <TableCell>{value.toString()}</TableCell>
-                        <TableCell>{new Date(timestamp).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {Object.keys(collectedData).length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={3} align="center">
-                          No data collected yet
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
+            <Grid container spacing={1}>
+              {sequence.steps.map((step) => (
+                <Grid item xs={12} key={step.id}>
+                  <Box
+                    sx={{
+                      p: 1,
+                      borderRadius: 1,
+                      bgcolor: 'background.default',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="body1">{step.name}</Typography>
+                      <Typography variant="body2" color="textSecondary">
+                        {step.description}
+                      </Typography>
+                    </Box>
+                    <Box display="flex" gap={1} alignItems="center">
+                      <Chip
+                        label={step.status}
+                        color={getStatusColor(step.status)}
+                        size="small"
+                      />
+                    </Box>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
         </Grid>
-      </Grid>
-    </Box>
+      ))}
+    </Grid>
   );
 } 
