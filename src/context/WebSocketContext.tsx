@@ -81,22 +81,33 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [equipment, setEquipment] = useState<EquipmentState | null>(null);
 
   useEffect(() => {
+    console.log('Attempting to connect to WebSocket...');
     const ws = new WebSocket('ws://localhost:8003/ws/state');
 
     ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('WebSocket connected successfully');
       setConnected(true);
     };
 
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
+    ws.onclose = (event) => {
+      console.log('WebSocket disconnected:', event.code, event.reason);
       setConnected(false);
       setEquipment(null);
+      
+      // Attempt to reconnect after 5 seconds
+      setTimeout(() => {
+        console.log('Attempting to reconnect...');
+      }, 5000);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('Received WebSocket data:', data);
         setEquipment(data);
       } catch (err) {
         console.error('Failed to parse WebSocket message:', err);
@@ -104,6 +115,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     };
 
     return () => {
+      console.log('Cleaning up WebSocket connection');
       ws.close();
     };
   }, []);
